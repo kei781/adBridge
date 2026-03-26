@@ -31,7 +31,7 @@ export const surveyResultSchema = z.object({
 // 설문 생성 스키마
 export const surveyCreateSchema = z.object({
   title: z.string().min(1, "제목을 입력하세요").max(50),
-  slug: z.string().min(1).regex(/^[a-z0-9-]+$/, "slug는 소문자, 숫자, 하이픈만 허용됩니다"),
+  slug: z.string().min(1).regex(/^[a-z0-9가-힣-]+$/, "slug는 소문자, 숫자, 한글, 하이픈만 허용됩니다"),
   description: z.string().min(1, "설명을 입력하세요"),
   thumbnailUrl: z.string().url().nullable().optional(),
   coverImageUrl: z.string().url().nullable().optional(),

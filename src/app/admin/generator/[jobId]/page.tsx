@@ -184,7 +184,7 @@ export default function AdminGeneratorJobPage() {
       const res = await fetch(`/api/admin/generator/${jobId}/approve`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ surveyIds: ids }),
+        body: JSON.stringify({ surveyIds: ids, action: 'approve' }),
       });
 
       const json = await res.json();
