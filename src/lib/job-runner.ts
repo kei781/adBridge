@@ -9,6 +9,7 @@ import { prisma } from "@/lib/db";
 import { JobStatus } from "@/generated/prisma";
 import { scrapeSurvey, type ScrapedData } from "@/lib/scraper";
 import { generateSurveys } from "@/lib/survey-generator";
+import { generateAllImages } from "@/lib/image-generator";
 
 // 로그 엔트리 타입
 type LogEntry = {
@@ -187,6 +188,34 @@ export async function runGenerationJob(jobId: string): Promise<void> {
         },
       });
 
+      // 설문별 이미지 자동 생성 (썸네일 + 결과별 OG)
+      try {
+        const { thumbnailUrl, resultImages } = await generateAllImages({
+          slug: surveyData.slug,
+          title: surveyData.title,
+          description: surveyData.description,
+          results: surveyData.results,
+        });
+
+        // 썸네일 URL 업데이트
+        await prisma.survey.update({
+          where: { id: created.id },
+          data: { thumbnailUrl },
+        });
+
+        // 각 결과의 OG 이미지 URL 업데이트
+        for (const [resultKey, imageUrl] of Object.entries(resultImages)) {
+          await prisma.surveyResult.updateMany({
+            where: { surveyId: created.id, resultKey },
+            data: { resultImageUrl: imageUrl, ogImageUrl: imageUrl },
+          });
+        }
+
+        console.log(`[파이프라인] 이미지 생성 완료: ${surveyData.title}`);
+      } catch (imgError) {
+        console.error(`[파이프라인] 이미지 생성 실패:`, imgError);
+      }
+
       createdSurveyIds.push(created.id);
     }
 
@@ -197,9 +226,9 @@ export async function runGenerationJob(jobId: string): Promise<void> {
 
     await appendLog(jobId, {
       step: stepNumber,
-      title: "콘텐츠 생성",
+      title: "콘텐츠 생성 + 이미지 생성",
       status: "completed",
-      detail: `${createdSurveyIds.length}개 설문 생성 완료 — ${generatedSurveys.map((s) => `"${s.title}"`).join(", ")}`,
+      detail: `${createdSurveyIds.length}개 설문 + 썸네일/결과 이미지 생성 완료`,
       timestamp: new Date().toISOString(),
     });
     stepNumber++;
