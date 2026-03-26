@@ -199,14 +199,14 @@ export default function SurveyFlow({ survey }: SurveyFlowProps) {
   const gridClass = optionCount >= 3 ? 'grid-cols-2' : 'grid-cols-1';
 
   return (
-    <div className="min-h-dvh flex flex-col bg-white">
+    <div className="flex flex-col bg-white">
       {/* 상단 프로그레스 바 */}
-      <div className="sticky top-0 z-20 bg-white/95 backdrop-blur-sm px-4 pt-4 pb-2">
+      <div className="px-4 pt-4 pb-2">
         <ProgressBar current={currentStepIndex + 1} total={totalSteps} />
       </div>
 
       {/* 질문 영역 (슬라이드 전환 애니메이션) */}
-      <div className={`flex-1 flex flex-col px-4 pb-8 transition-all duration-200 ${
+      <div className={`flex flex-col px-4 pb-6 transition-all duration-200 ${
         stepTransition ? 'opacity-0 translate-x-4' : 'opacity-100 translate-x-0'
       }`}>
         {/* 질문 이미지 */}
@@ -222,12 +222,12 @@ export default function SurveyFlow({ survey }: SurveyFlowProps) {
         )}
 
         {/* 질문 텍스트 */}
-        <h2 className="text-lg font-bold text-gray-900 text-center mt-4 mb-8 leading-snug">
+        <h2 className="text-lg font-bold text-gray-900 text-center mt-4 mb-6 leading-snug">
           {currentStep.questionText}
         </h2>
 
         {/* 선택지 그리드 */}
-        <div className={`grid ${gridClass} gap-3 mt-auto`}>
+        <div className={`grid ${gridClass} gap-3`}>
           {currentStep.options.map((option) => {
             const isSelected = selectedOptionId === option.id;
 
