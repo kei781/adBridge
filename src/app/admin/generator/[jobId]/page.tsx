@@ -30,7 +30,8 @@ interface GeneratedSurvey {
   description: string;
   slug: string;
   status: string;
-  _count: { steps: number; results: number };
+  steps?: unknown[];
+  results?: unknown[];
 }
 
 // 작업 타입
@@ -448,8 +449,8 @@ export default function AdminGeneratorJobPage() {
                       {survey.description}
                     </p>
                     <div className="flex gap-3 text-xs text-muted">
-                      <span>질문 {survey._count.steps}개</span>
-                      <span>결과 {survey._count.results}개</span>
+                      <span>질문 {survey.steps?.length ?? 0}개</span>
+                      <span>결과 {survey.results?.length ?? 0}개</span>
                       <span className="font-mono text-muted">/{survey.slug}</span>
                     </div>
                   </div>
