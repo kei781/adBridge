@@ -64,7 +64,7 @@ export default function AdminGeneratorPage() {
       const res = await fetch('/api/admin/generator/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ targetUrl: url.trim() }),
+        body: JSON.stringify({ url: url.trim() }),
       });
 
       const json = await res.json();

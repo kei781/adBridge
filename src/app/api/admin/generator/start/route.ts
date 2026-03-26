@@ -9,6 +9,29 @@ const startSchema = z.object({
   url: z.string().url("유효한 URL을 입력해주세요"),
 });
 
+// GET /api/admin/generator/start — 전체 작업 목록 조회
+export async function GET() {
+  try {
+    const session = await auth();
+    if (!session) {
+      return NextResponse.json({ error: "인증이 필요합니다" }, { status: 401 });
+    }
+
+    const jobs = await prisma.generationJob.findMany({
+      orderBy: { createdAt: "desc" },
+      take: 50,
+    });
+
+    return NextResponse.json({ data: jobs });
+  } catch (error) {
+    console.error("작업 목록 조회 실패:", error);
+    return NextResponse.json(
+      { error: "작업 목록을 불러오는 데 실패했습니다" },
+      { status: 500 }
+    );
+  }
+}
+
 // POST /api/admin/generator/start — 콘텐츠 생성 작업 시작
 export async function POST(request: NextRequest) {
   try {
