@@ -9,7 +9,8 @@ type Props = {
 
 // 동적 메타데이터
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
-  const { slug } = await params;
+  const { slug: rawSlug } = await params;
+  const slug = decodeURIComponent(rawSlug);
   const survey = await prisma.survey.findUnique({
     where: { slug },
     select: { title: true, description: true, thumbnailUrl: true },
@@ -30,7 +31,8 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
 // 설문 상세/진행 페이지
 export default async function SurveyPage({ params }: Props) {
-  const { slug } = await params;
+  const { slug: rawSlug } = await params;
+  const slug = decodeURIComponent(rawSlug);
 
   const survey = await prisma.survey.findUnique({
     where: { slug },

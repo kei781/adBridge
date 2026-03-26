@@ -12,7 +12,9 @@ type Props = {
 
 // 동적 메타데이터 — 바이럴 공유의 핵심
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
-  const { slug, resultKey } = await params;
+  const rawParams = await params;
+  const slug = decodeURIComponent(rawParams.slug);
+  const resultKey = decodeURIComponent(rawParams.resultKey);
 
   const survey = await prisma.survey.findUnique({
     where: { slug },
@@ -49,7 +51,9 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
 // 결과 페이지 (SSR)
 export default async function ResultPage({ params }: Props) {
-  const { slug, resultKey } = await params;
+  const rawParams = await params;
+  const slug = decodeURIComponent(rawParams.slug);
+  const resultKey = decodeURIComponent(rawParams.resultKey);
 
   const survey = await prisma.survey.findUnique({
     where: { slug },
