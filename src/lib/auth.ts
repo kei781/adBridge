@@ -4,6 +4,7 @@ import type { NextAuthConfig } from "next-auth";
 
 // NextAuth v5 설정 — 단일 어드민 계정 인증
 const config: NextAuthConfig = {
+  trustHost: true,
   providers: [
     Credentials({
       name: "Admin",
