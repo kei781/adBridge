@@ -2,6 +2,7 @@ import Link from "next/link";
 import { AdProvider } from "@/components/ads/AdProvider";
 import SidebarAd from "@/components/ads/SidebarAd";
 import AnchorAd from "@/components/ads/AnchorAd";
+import { AdVisibility } from "@/components/ads/AdVisibility";
 
 // 공개 페이지 레이아웃
 export default function PublicLayout({
@@ -31,9 +32,11 @@ export default function PublicLayout({
           <p>&copy; 2024 adBridge. All rights reserved.</p>
         </footer>
 
-        {/* 광고: 사이드바 (데스크톱) + 앵커 (모바일) */}
-        <SidebarAd />
-        <AnchorAd />
+        {/* 광고: 설문 진행 중에는 숨김 */}
+        <AdVisibility>
+          <SidebarAd />
+          <AnchorAd />
+        </AdVisibility>
       </div>
     </AdProvider>
   );
