@@ -44,7 +44,10 @@ export default function SurveyFlow({ survey }: SurveyFlowProps) {
   const currentStep = sortedSteps[currentStepIndex];
   const totalSteps = sortedSteps.length;
 
-  // 플레이 중 beforeunload 경고
+  // 스텝 전환 애니메이션 상태
+  const [stepTransition, setStepTransition] = useState(false);
+
+  // 플레이 중 beforeunload + 뒤로가기(popstate) 방지
   useEffect(() => {
     if (phase !== 'playing') return;
 
@@ -52,9 +55,23 @@ export default function SurveyFlow({ survey }: SurveyFlowProps) {
       e.preventDefault();
     };
 
+    // 뒤로가기 방지: history에 더미 상태 추가
+    window.history.pushState(null, '', window.location.href);
+    const handlePopState = () => {
+      window.history.pushState(null, '', window.location.href);
+      if (window.confirm('정말 나가시겠어요? 진행 상황이 저장되지 않습니다.')) {
+        window.removeEventListener('popstate', handlePopState);
+        router.back();
+      }
+    };
+
     window.addEventListener('beforeunload', handleBeforeUnload);
-    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-  }, [phase]);
+    window.addEventListener('popstate', handlePopState);
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      window.removeEventListener('popstate', handlePopState);
+    };
+  }, [phase, router]);
 
   // 결과 제출 처리
   const submitAnswers = useCallback(
@@ -100,8 +117,12 @@ export default function SurveyFlow({ survey }: SurveyFlowProps) {
         setSelectedOptionId(null);
 
         if (currentStepIndex < totalSteps - 1) {
-          // 다음 질문
-          setCurrentStepIndex((prev) => prev + 1);
+          // 다음 질문 (슬라이드 전환)
+          setStepTransition(true);
+          setTimeout(() => {
+            setCurrentStepIndex((prev) => prev + 1);
+            setStepTransition(false);
+          }, 200);
         } else {
           // 마지막 질문 — 결과 제출
           submitAnswers(newAnswers);
@@ -184,8 +205,10 @@ export default function SurveyFlow({ survey }: SurveyFlowProps) {
         <ProgressBar current={currentStepIndex + 1} total={totalSteps} />
       </div>
 
-      {/* 질문 영역 */}
-      <div className="flex-1 flex flex-col px-4 pb-8">
+      {/* 질문 영역 (슬라이드 전환 애니메이션) */}
+      <div className={`flex-1 flex flex-col px-4 pb-8 transition-all duration-200 ${
+        stepTransition ? 'opacity-0 translate-x-4' : 'opacity-100 translate-x-0'
+      }`}>
         {/* 질문 이미지 */}
         {currentStep.questionImageUrl && (
           <div className="relative w-full aspect-video rounded-xl overflow-hidden mb-4">

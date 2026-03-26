@@ -38,7 +38,7 @@ export default function ShareButtons({
   baseUrl,
 }: ShareButtonsProps) {
   const [copied, setCopied] = useState(false);
-  const shareUrl = `${baseUrl}/survey/${slug}/result?r=${resultKey}`;
+  const shareUrl = `${baseUrl}/survey/${slug}/result/${resultKey}`;
 
   // Kakao SDK 로드
   useEffect(() => {
@@ -89,7 +89,7 @@ export default function ShareButtons({
       content: {
         title,
         description,
-        imageUrl: `${baseUrl}/api/og/${slug}?r=${resultKey}`,
+        imageUrl: `${baseUrl}/api/og/${slug}/${resultKey}`,
         link: { mobileWebUrl: shareUrl, webUrl: shareUrl },
       },
       buttons: [
