@@ -1,0 +1,168 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// 설문조사 상태
+enum SurveyStatus {
+  DRAFT
+  PENDING_REVIEW
+  PUBLISHED
+  ARCHIVED
+}
+
+// 설문조사
+model Survey {
+  id              String       @id @default(uuid())
+  title           String       // 후킹 제목
+  slug            String       @unique // URL용 slug
+  description     String       // 짧은 설명
+  thumbnailUrl    String?      @map("thumbnail_url") // 리스트 썸네일
+  coverImageUrl   String?      @map("cover_image_url") // 블라인드 이미지
+  status          SurveyStatus @default(DRAFT)
+  viewCount       Int          @default(0) @map("view_count")
+  shareCount      Int          @default(0) @map("share_count")
+  completionCount Int          @default(0) @map("completion_count")
+  createdAt       DateTime     @default(now()) @map("created_at")
+  updatedAt       DateTime     @updatedAt @map("updated_at")
+  publishedAt     DateTime?    @map("published_at")
+  generationMeta  Json?        @map("generation_meta") // 자동생성 워크플로우 로그
+
+  steps   SurveyStep[]
+  results SurveyResult[]
+
+  @@map("surveys")
+}
+
+// 설문 단계/질문
+model SurveyStep {
+  id               String   @id @default(uuid())
+  surveyId         String   @map("survey_id")
+  order            Int      // 표시 순서
+  questionText     String   @map("question_text")
+  questionImageUrl String?  @map("question_image_url")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  survey  Survey       @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+  options StepOption[]
+
+  @@index([surveyId])
+  @@map("survey_steps")
+}
+
+// 각 단계의 선택지
+model StepOption {
+  id        String  @id @default(uuid())
+  stepId    String  @map("step_id")
+  label     String  // 선택지 텍스트
+  imageUrl  String? @map("image_url")
+  order     Int
+  weightMap Json    @map("weight_map") // { "result_A": 3, "result_B": 1 }
+
+  step SurveyStep @relation(fields: [stepId], references: [id], onDelete: Cascade)
+
+  @@index([stepId])
+  @@map("step_options")
+}
+
+// 결과 유형
+model SurveyResult {
+  id             String  @id @default(uuid())
+  surveyId       String  @map("survey_id")
+  resultKey      String  @map("result_key") // weight_map의 key와 매칭
+  title          String  // 결과 제목
+  description    String  // 결과 설명
+  resultImageUrl String? @map("result_image_url") // 결과 전용 이미지
+  ogImageUrl     String? @map("og_image_url") // 사전 생성 OG 이미지
+  shareText      String  @map("share_text") // 공유 시 기본 텍스트
+
+  survey Survey @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+
+  @@unique([surveyId, resultKey])
+  @@index([surveyId])
+  @@map("survey_results")
+}
+
+// 광고 슬롯 타입
+enum AdSlot {
+  SIDEBAR  // a: 우측 사이드바 (300x600 또는 300x250)
+  ANCHOR   // b: 하단 앵커 (728x90 또는 320x100)
+  VIGNETTE // c: 전면 모달 (480x320)
+}
+
+// 광고
+model Advertisement {
+  id              String   @id @default(uuid())
+  name            String   // 관리용 이름
+  slot            AdSlot   // 광고 슬롯 타입
+  imageUrl        String   @map("image_url") // 광고 이미지
+  redirectUrl     String   @map("redirect_url") // 클릭 시 이동 URL
+  imageWidth      Int      @map("image_width") // validation용
+  imageHeight     Int      @map("image_height") // validation용
+  startDate       DateTime @map("start_date") @db.Date
+  endDate         DateTime @map("end_date") @db.Date
+  isActive        Boolean  @default(true) @map("is_active")
+  clickCount      Int      @default(0) @map("click_count")
+  impressionCount Int      @default(0) @map("impression_count")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@map("advertisements")
+}
+
+// 자동 생성 작업 상태
+enum JobStatus {
+  QUEUED
+  SCRAPING
+  ANALYZING
+  GENERATING
+  REVIEW_READY
+  FAILED
+}
+
+// 콘텐츠 자동 생성 작업
+model GenerationJob {
+  id                 String    @id @default(uuid())
+  targetUrl          String    @map("target_url") // 분석 대상 URL
+  status             JobStatus @default(QUEUED)
+  logs               Json[]    @default([]) // 단계별 로그 배열
+  generatedSurveyIds String[]  @default([]) @map("generated_survey_ids") // 생성된 설문 ID 목록
+  errorMessage       String?   @map("error_message")
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
+
+  @@map("generation_jobs")
+}
+
+// 분석 이벤트 타입
+enum EventType {
+  PAGE_VIEW
+  SURVEY_START
+  STEP_COMPLETE
+  SURVEY_COMPLETE
+  SHARE
+  AD_CLICK
+}
+
+// 분석 이벤트
+model AnalyticsEvent {
+  id          String    @id @default(uuid())
+  type        EventType
+  surveyId    String?   @map("survey_id")
+  stepIndex   Int?      @map("step_index")
+  resultKey   String?   @map("result_key")
+  referrer    String?
+  userAgent   String?   @map("user_agent")
+  fingerprint String?   // 익명 쿠키 기반 식별자
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  @@index([surveyId])
+  @@index([type])
+  @@index([createdAt])
+  @@map("analytics_events")
+}
