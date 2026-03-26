@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#4facfe"/>
+      <stop offset="100%" style="stop-color:#00f2fe"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="630" fill="url(#bg)" rx="0"/>
+  
+  <text x="600" y="302.4" text-anchor="middle" fill="white" font-size="52" font-weight="bold" font-family="sans-serif">모험 러버</text>
+  <text x="600" y="365.4" text-anchor="middle" fill="rgba(255,255,255,0.85)" font-size="22" font-family="sans-serif">취향 저격 테스트</text>
+  <text x="600" y="554.4" text-anchor="middle" fill="rgba(255,255,255,0.6)" font-size="18" font-family="sans-serif">나도 해보기 → adBridge</text>
+</svg>
