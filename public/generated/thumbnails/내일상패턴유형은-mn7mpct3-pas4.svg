@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="480" height="640">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#e0c3fc"/>
+      <stop offset="100%" style="stop-color:#8ec5fc"/>
+    </linearGradient>
+    <filter id="shadow"><feDropShadow dx="2" dy="2" stdDeviation="3" flood-opacity="0.3"/></filter>
+  </defs>
+  <rect width="480" height="640" fill="url(#bg)"/>
+  <text x="240" y="179.20000000000002" text-anchor="middle" font-size="72" filter="url(#shadow)">🧠</text>
+  <text x="240" y="307.2" text-anchor="middle" fill="white" font-size="44" font-weight="900" font-family="sans-serif" filter="url(#shadow)">내 일상 패턴 유형은?</text>
+  <text x="240" y="384" text-anchor="middle" fill="rgba(255,255,255,0.9)" font-size="24" font-family="sans-serif">일상 패턴로 알아보는 나의 숨겨진 모습! 지금 바로 테</text>
+  <text x="240" y="544" text-anchor="middle" fill="rgba(255,255,255,0.7)" font-size="20" font-family="sans-serif">지금 테스트하기 →</text>
+  <rect x="120" y="448" width="240" height="40" rx="20" fill="rgba(255,255,255,0.25)"/>
+  <text x="240" y="467.2" text-anchor="middle" fill="white" font-size="16" font-weight="bold" font-family="sans-serif">지금 테스트하기 →</text>
+</svg>

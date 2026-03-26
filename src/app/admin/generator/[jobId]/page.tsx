@@ -30,6 +30,7 @@ interface GeneratedSurvey {
   description: string;
   slug: string;
   status: string;
+  thumbnailUrl?: string | null;
   steps?: unknown[];
   results?: unknown[];
 }
@@ -432,6 +433,14 @@ export default function AdminGeneratorJobPage() {
                     disabled={survey.status === 'PUBLISHED'}
                     className="mt-1 w-4 h-4 rounded border-border text-primary focus:ring-primary"
                   />
+
+                  {/* 썸네일 미리보기 */}
+                  {survey.thumbnailUrl && (
+                    <div className="shrink-0 w-16 h-20 rounded-lg overflow-hidden bg-gray-100">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={survey.thumbnailUrl} alt="" className="w-full h-full object-cover" />
+                    </div>
+                  )}
 
                   {/* 설문 정보 */}
                   <div className="flex-1 min-w-0">
