@@ -55,7 +55,8 @@ export function AdProvider({ children }: { children: ReactNode }) {
         const res = await fetch('/api/ads/active');
         if (!res.ok) throw new Error('광고 조회 실패');
         const data = await res.json();
-        setAd(data);
+        // API 응답: { ad: {...} | null, slot: string | null }
+        setAd(data.ad ?? null);
       } catch {
         // 광고 로드 실패 시 null 유지 — 페이지 동작에 영향 없음
         setAd(null);
