@@ -72,42 +72,47 @@ export default function AdminGeneratorJobPage() {
     logEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, []);
 
-  // SSE 연결
+  // 작업 상태 폴링 (1초 간격, 완료/실패 시 중지)
   useEffect(() => {
-    const es = new EventSource(`/api/admin/generator/${jobId}/stream`);
-    eventSourceRef.current = es;
+    let active = true;
 
-    es.addEventListener('job', (event) => {
+    const fetchJob = async () => {
       try {
-        const data = JSON.parse(event.data) as GenerationJob;
-        setJob(data);
-        setConnectionError(false);
-      } catch (err) {
-        console.error('SSE 파싱 실패:', err);
-      }
-    });
-
-    es.addEventListener('done', () => {
-      es.close();
-    });
-
-    es.addEventListener('error', (event) => {
-      // SSE 커스텀 에러 이벤트
-      try {
-        const data = JSON.parse((event as MessageEvent).data);
-        console.error('SSE 에러:', data.message);
+        const res = await fetch(`/api/admin/generator/${jobId}`);
+        if (!res.ok) throw new Error("조회 실패");
+        const json = await res.json();
+        const data = json.data as GenerationJob;
+        if (active) {
+          setJob(data);
+          setConnectionError(false);
+        }
+        // 완료/실패 상태면 폴링 중지
+        if (data.status === "REVIEW_READY" || data.status === "FAILED") {
+          return false;
+        }
+        return true;
       } catch {
-        // 연결 에러
+        if (active) setConnectionError(true);
+        return false;
       }
-      setConnectionError(true);
-    });
-
-    es.onerror = () => {
-      setConnectionError(true);
     };
 
+    // 즉시 1회 호출 후 폴링 시작
+    fetchJob().then((shouldContinue) => {
+      if (!shouldContinue || !active) return;
+      const interval = setInterval(async () => {
+        const cont = await fetchJob();
+        if (!cont) clearInterval(interval);
+      }, 1500);
+      // cleanup에서 interval도 정리
+      const cleanup = () => { active = false; clearInterval(interval); };
+      // useEffect cleanup을 위해 ref에 저장
+      eventSourceRef.current = { close: cleanup } as unknown as EventSource;
+    });
+
     return () => {
-      es.close();
+      active = false;
+      eventSourceRef.current?.close();
     };
   }, [jobId]);
 
