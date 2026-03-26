@@ -1,15 +1,18 @@
 /**
  * 설문조사 스크래퍼 모듈
  *
- * MVP 단계에서는 실제 스크래핑 없이 모의 데이터를 반환합니다.
- * TODO: Playwright 통합 — BROWSER_PROFILE_PATH 환경변수의 Chrome 프로파일을 사용하여
- *       실제 웹사이트를 DFS 탐색하고 질문-선택지-결과 구조를 추출할 것.
+ * Playwright를 사용하여 경쟁사 설문/퀴즈 사이트를 실제로 탐색합니다.
+ * - 개별 퀴즈 URL: 해당 퀴즈의 구조를 분석
+ * - 리스트/검색 URL: 페이지 내 퀴즈 링크들을 탐색하여 여러 개 분석
  */
+
+import { chromium, type Browser, type Page } from "playwright";
 
 // 스크래핑 결과 타입
 export type ScrapedData = {
   title: string;
   description: string;
+  sourceUrl: string;
   steps: {
     question: string;
     options: string[];
@@ -22,141 +25,371 @@ export type ScrapedData = {
     targetAudience: string;
     viralPoints: string[];
     improvements: string[];
+    scrapedQuizCount?: number; // 리스트에서 발견된 퀴즈 수
+    analyzedUrls?: string[]; // 실제 분석한 URL 목록
   };
 };
 
-// URL에서 도메인/경로를 분석하여 카테고리 힌트 추출
-function analyzeUrl(url: string): { domain: string; category: string } {
+// 브라우저 인스턴스 관리
+let browserInstance: Browser | null = null;
+
+async function getBrowser(): Promise<Browser> {
+  if (browserInstance && browserInstance.isConnected()) {
+    return browserInstance;
+  }
+
+  const userDataDir = process.env.BROWSER_PROFILE_PATH;
+
+  if (userDataDir) {
+    // 기 로그인된 브라우저 프로파일 사용
+    console.log(`[스크래퍼] Chrome 프로파일 사용: ${userDataDir}`);
+    const context = await chromium.launchPersistentContext(userDataDir, {
+      headless: true,
+      args: ["--no-sandbox", "--disable-blink-features=AutomationControlled"],
+    });
+    // persistent context에서는 browser()를 통해 접근
+    browserInstance = context.browser() ?? await chromium.launch({ headless: true });
+    return browserInstance;
+  }
+
+  // 프로파일 없이 일반 브라우저 사용
+  browserInstance = await chromium.launch({
+    headless: true,
+    args: ["--no-sandbox"],
+  });
+  return browserInstance;
+}
+
+/**
+ * 페이지에서 텍스트 콘텐츠를 안전하게 추출
+ */
+async function safeTextContent(page: Page, selector: string): Promise<string> {
   try {
-    const parsed = new URL(url);
-    const domain = parsed.hostname.replace("www.", "");
-    // 경로에서 카테고리 힌트 추출
-    const pathParts = parsed.pathname.split("/").filter(Boolean);
-    const category = pathParts[0] || "일반";
-    return { domain, category };
+    const el = await page.$(selector);
+    if (!el) return "";
+    return ((await el.textContent()) ?? "").trim();
   } catch {
-    return { domain: "unknown", category: "일반" };
+    return "";
   }
 }
 
-// 카테고리별 모의 스크래핑 템플릿
-const MOCK_TEMPLATES: Record<string, () => ScrapedData> = {
-  성격: () => ({
-    title: "나의 진짜 성격 유형 테스트",
-    description: "12가지 질문으로 알아보는 나의 숨겨진 성격",
-    steps: [
-      { question: "주말에 가장 하고 싶은 것은?", options: ["집에서 넷플릭스", "친구들과 카페", "혼자 산책", "새로운 맛집 탐방"] },
-      { question: "스트레스를 받으면 나는?", options: ["잠을 잔다", "먹는다", "운동한다", "친구에게 전화한다"] },
-      { question: "여행을 간다면 선호하는 스타일은?", options: ["꼼꼼한 계획 여행", "즉흥 여행", "패키지 여행", "혼자 배낭여행"] },
-      { question: "친구가 약속에 30분 늦었다. 나의 반응은?", options: ["이해한다", "살짝 짜증난다", "연락을 한다", "그냥 간다"] },
-      { question: "나의 SNS 스타일은?", options: ["구경만 한다", "일상 공유", "밈/웃긴 것 공유", "거의 안 한다"] },
-      { question: "단체 모임에서 나는?", options: ["분위기 메이커", "조용히 듣는 편", "한두 명과 깊은 대화", "중간 다리 역할"] },
-    ],
-    results: [
-      { title: "감성 충만 몽상가", description: "풍부한 감성과 상상력의 소유자! 혼자만의 시간을 소중히 여기며 깊은 사고를 즐깁니다." },
-      { title: "에너지 뿜뿜 인싸", description: "어디서든 분위기를 이끄는 에너지의 원천! 사람들과 함께할 때 빛이 납니다." },
-      { title: "든든한 현실주의자", description: "계획적이고 체계적인 당신! 주변 사람들에게 믿음직한 존재입니다." },
-      { title: "자유로운 탐험가", description: "새로운 경험을 두려워하지 않는 모험가! 호기심이 당신의 원동력입니다." },
-    ],
-    metadata: {
-      targetAudience: "10대~30대 SNS 활발 사용자",
-      viralPoints: ["공감되는 질문", "결과 공유 욕구 자극", "친구 태그 유도"],
-      improvements: ["질문 수 최적화 필요", "결과 이미지 추가 권장", "공유 텍스트 강화"],
-    },
-  }),
+/**
+ * 페이지가 퀴즈/설문 리스트인지 판별
+ * - 여러 개의 퀴즈 링크가 있으면 리스트 페이지
+ */
+async function isListPage(page: Page): Promise<boolean> {
+  // 일반적인 리스트 패턴: 카드/링크가 3개 이상
+  const links = await page.$$eval("a[href]", (els) =>
+    els
+      .map((el) => ({ href: el.getAttribute("href") ?? "", text: (el.textContent ?? "").trim() }))
+      .filter((l) => l.text.length > 3 && l.text.length < 100)
+  );
 
-  연애: () => ({
-    title: "나의 연애 스타일 분석",
-    description: "연애할 때 나는 어떤 유형일까?",
-    steps: [
-      { question: "이상형의 첫인상은?", options: ["따뜻한 미소", "지적인 눈빛", "유머 센스", "패션 감각"] },
-      { question: "데이트 코스로 선호하는 것은?", options: ["영화관", "한강 산책", "맛집 투어", "집에서 요리"] },
-      { question: "연인과 싸웠을 때 나는?", options: ["먼저 연락한다", "시간을 둔다", "편지를 쓴다", "직접 만나서 대화한다"] },
-      { question: "연인에게 가장 중요한 것은?", options: ["신뢰", "소통", "유머", "배려"] },
-      { question: "기념일에 대한 나의 태도는?", options: ["꼼꼼히 챙긴다", "깜짝 이벤트를 한다", "평소처럼 보낸다", "상대가 원하는 대로 한다"] },
-    ],
-    results: [
-      { title: "로맨틱 무드메이커", description: "사랑을 표현하는 데 거침없는 당신! 연인에게 특별한 순간을 선물합니다." },
-      { title: "듬직한 현실 연애러", description: "화려하진 않지만 든든한 당신! 꾸준한 사랑이 진짜 사랑입니다." },
-      { title: "감성 폭발 사랑꾼", description: "감정 표현이 풍부한 당신! 연인과의 감정적 교감을 가장 소중히 여깁니다." },
-    ],
-    metadata: {
-      targetAudience: "20대~30대 연애에 관심 있는 사용자",
-      viralPoints: ["연인과 함께 풀어보기", "결과 비교 재미", "공유 시 커플 태그"],
-      improvements: ["성별 맞춤 질문 추가", "결과별 궁합 기능", "연애 조언 추가"],
-    },
-  }),
+  // 퀴즈/테스트 관련 링크가 3개 이상이면 리스트
+  const quizLinks = links.filter(
+    (l) =>
+      l.href.includes("quiz") ||
+      l.href.includes("test") ||
+      l.href.includes("survey") ||
+      l.text.includes("테스트") ||
+      l.text.includes("유형") ||
+      l.text.includes("알아보") ||
+      l.text.includes("검사")
+  );
 
-  // 기본 템플릿 (카테고리 매칭 실패 시)
-  기본: () => ({
-    title: "나를 알아보는 심리 테스트",
-    description: "간단한 질문으로 알아보는 나의 숨겨진 모습",
-    steps: [
-      { question: "아침에 일어나면 가장 먼저 하는 것은?", options: ["핸드폰 확인", "물 마시기", "스트레칭", "이불 정리"] },
-      { question: "가장 좋아하는 계절은?", options: ["봄", "여름", "가을", "겨울"] },
-      { question: "혼자 있을 때 주로 뭘 하나요?", options: ["음악 듣기", "유튜브 보기", "독서", "게임"] },
-      { question: "친구에게 나는 어떤 존재?", options: ["웃음 담당", "상담사", "플랜 메이커", "조용한 관찰자"] },
-      { question: "인생에서 가장 중요한 가치는?", options: ["행복", "성장", "관계", "자유"] },
-      { question: "갑자기 100만원이 생기면?", options: ["저축한다", "여행 간다", "쇼핑한다", "맛있는 거 먹는다"] },
-      { question: "나의 숨겨진 재능은?", options: ["공감 능력", "분석력", "창의력", "리더십"] },
-    ],
-    results: [
-      { title: "빛나는 감성러", description: "세상을 아름답게 바라보는 당신! 주변에 따뜻한 에너지를 전파합니다." },
-      { title: "냉철한 전략가", description: "논리적이고 체계적인 당신! 어떤 상황에서도 최선의 판단을 내립니다." },
-      { title: "활력 넘치는 행동파", description: "생각보다 행동이 앞서는 당신! 에너지가 넘치는 도전자입니다." },
-      { title: "따뜻한 힐러", description: "주변 사람들을 치유하는 당신! 공감 능력이 뛰어난 평화주의자입니다." },
-    ],
-    metadata: {
-      targetAudience: "전 연령대 SNS 사용자",
-      viralPoints: ["보편적 공감", "결과 라벨의 긍정성", "짧은 소요 시간"],
-      improvements: ["타겟 구체화 필요", "이미지 추가 권장", "결과 다양성 확대"],
-    },
-  }),
-};
+  return quizLinks.length >= 3;
+}
 
-// 카테고리 키워드 매핑
-function detectCategory(url: string): string {
-  const urlLower = url.toLowerCase();
-  if (urlLower.includes("연애") || urlLower.includes("love") || urlLower.includes("couple") || urlLower.includes("mbti")) {
-    return "연애";
+/**
+ * 리스트 페이지에서 퀴즈 링크들을 추출
+ */
+async function extractQuizLinks(page: Page): Promise<{ url: string; title: string }[]> {
+  const baseUrl = new URL(page.url()).origin;
+
+  const links = await page.$$eval("a[href]", (els) =>
+    els.map((el) => ({
+      href: el.getAttribute("href") ?? "",
+      text: (el.textContent ?? "").trim(),
+    }))
+  );
+
+  const quizLinks = links
+    .filter(
+      (l) =>
+        l.text.length > 3 &&
+        l.text.length < 100 &&
+        (l.href.includes("quiz") ||
+          l.href.includes("test") ||
+          l.href.includes("survey") ||
+          l.text.includes("테스트") ||
+          l.text.includes("유형") ||
+          l.text.includes("알아보") ||
+          l.text.includes("검사") ||
+          l.text.includes("심리"))
+    )
+    .map((l) => ({
+      url: l.href.startsWith("http") ? l.href : `${baseUrl}${l.href}`,
+      title: l.text.replace(/\n/g, " ").trim(),
+    }));
+
+  // 중복 제거
+  const seen = new Set<string>();
+  return quizLinks.filter((l) => {
+    if (seen.has(l.url)) return false;
+    seen.add(l.url);
+    return true;
+  });
+}
+
+/**
+ * 개별 퀴즈 페이지에서 콘텐츠 구조 추출
+ */
+async function scrapeQuizPage(page: Page, url: string): Promise<ScrapedData | null> {
+  try {
+    console.log(`[스크래퍼] 퀴즈 페이지 분석: ${url}`);
+    await page.goto(url, { waitUntil: "domcontentloaded", timeout: 15000 });
+    await page.waitForTimeout(2000); // 동적 콘텐츠 로딩 대기
+
+    // 페이지 제목 추출
+    const title =
+      (await safeTextContent(page, "h1")) ||
+      (await safeTextContent(page, "h2")) ||
+      (await page.title());
+
+    if (!title || title.length < 2) {
+      console.log(`[스크래퍼] 제목 추출 실패, 스킵: ${url}`);
+      return null;
+    }
+
+    // 설명 추출
+    const description =
+      (await safeTextContent(page, 'meta[property="og:description"]')) ||
+      (await safeTextContent(page, 'meta[name="description"]')) ||
+      (await safeTextContent(page, "p")) ||
+      "";
+
+    // 페이지 전체 텍스트에서 질문/선택지 패턴 추출
+    const pageText = await page.evaluate(() => document.body.innerText);
+    const lines = pageText.split("\n").map((l) => l.trim()).filter((l) => l.length > 0);
+
+    // 질문 패턴 감지 (? 로 끝나거나, 번호가 붙은 문장)
+    const questions: { question: string; options: string[] }[] = [];
+    let currentQuestion = "";
+    let currentOptions: string[] = [];
+
+    for (const line of lines) {
+      const isQuestion =
+        line.endsWith("?") ||
+        /^\d+[\.\)]\s/.test(line) ||
+        line.includes("어떤") ||
+        line.includes("무엇") ||
+        line.includes("선택");
+
+      if (isQuestion && line.length > 5 && line.length < 200) {
+        // 이전 질문 저장
+        if (currentQuestion && currentOptions.length >= 2) {
+          questions.push({ question: currentQuestion, options: [...currentOptions] });
+        }
+        currentQuestion = line;
+        currentOptions = [];
+      } else if (currentQuestion && line.length > 1 && line.length < 100) {
+        // 선택지 후보
+        currentOptions.push(line);
+        if (currentOptions.length >= 4) {
+          // 선택지가 4개 이상이면 다음 질문으로
+          questions.push({ question: currentQuestion, options: [...currentOptions] });
+          currentQuestion = "";
+          currentOptions = [];
+        }
+      }
+    }
+    // 마지막 질문 저장
+    if (currentQuestion && currentOptions.length >= 2) {
+      questions.push({ question: currentQuestion, options: currentOptions });
+    }
+
+    // 버튼/링크에서도 선택지 추출 시도
+    if (questions.length === 0) {
+      const buttons = await page.$$eval("button, [role='button'], .option, .choice, .answer", (els) =>
+        els.map((el) => (el.textContent ?? "").trim()).filter((t) => t.length > 1 && t.length < 100)
+      );
+
+      if (buttons.length >= 2) {
+        questions.push({
+          question: title.endsWith("?") ? title : `${title} - 당신의 선택은?`,
+          options: buttons.slice(0, 4),
+        });
+      }
+    }
+
+    // 결과 패턴 추출 (결과 페이지 접근이 어려우므로 페이지 내 힌트로 추출)
+    const resultHints = lines.filter(
+      (l) =>
+        l.includes("타입") ||
+        l.includes("유형") ||
+        l.includes("형 인간") ||
+        l.includes("당신은") ||
+        (l.length > 5 && l.length < 30 && !l.includes("?"))
+    );
+
+    const results = resultHints.slice(0, 4).map((hint) => ({
+      title: hint.length > 20 ? hint.slice(0, 20) : hint,
+      description: `${hint} - 이 유형에 대한 상세 설명`,
+    }));
+
+    // 최소 결과가 없으면 기본값
+    if (results.length < 2) {
+      results.push(
+        { title: "A 유형", description: "첫 번째 유형에 대한 설명" },
+        { title: "B 유형", description: "두 번째 유형에 대한 설명" },
+        { title: "C 유형", description: "세 번째 유형에 대한 설명" }
+      );
+    }
+
+    return {
+      title,
+      description: description.slice(0, 200),
+      sourceUrl: url,
+      steps: questions.length > 0 ? questions.slice(0, 10) : [
+        { question: `${title}에 대한 첫 번째 질문`, options: ["선택지 1", "선택지 2", "선택지 3"] },
+      ],
+      results: results.slice(0, 5),
+      metadata: {
+        targetAudience: "SNS 활발 사용자",
+        viralPoints: [
+          title.length <= 15 ? "짧고 후킹한 제목" : "제목 길이 최적화 필요",
+          questions.length >= 5 ? "적절한 질문 수" : "질문 수 보강 필요",
+          "결과 공유 욕구 자극",
+        ],
+        improvements: [
+          questions.length < 5 ? "질문 수를 5~8개로 늘리기" : "질문 수 적절",
+          "결과 이미지 추가 권장",
+          "공유 텍스트 강화",
+        ],
+      },
+    };
+  } catch (error) {
+    console.error(`[스크래퍼] 페이지 분석 실패: ${url}`, error);
+    return null;
   }
-  if (urlLower.includes("성격") || urlLower.includes("personality") || urlLower.includes("character")) {
-    return "성격";
-  }
-  return "기본";
 }
 
 /**
  * 대상 URL을 스크래핑하여 설문조사 데이터를 추출합니다.
  *
- * MVP: 실제 스크래핑 없이 URL 분석 기반 모의 데이터 반환
- * TODO: Playwright 통합 시 아래 단계로 구현
- *   1. BROWSER_PROFILE_PATH의 Chrome 프로파일로 브라우저 실행
- *   2. 대상 URL 접속 및 설문/퀴즈 구조 판별
- *   3. DFS로 모든 질문-선택지-결과 경로 탐색
- *   4. 각 단계별 스크린샷 저장 + 로그 기록
- *   5. 수집 데이터 구조화하여 반환
+ * - 리스트/검색 페이지: 퀴즈 링크들을 발견하고 각각 분석
+ * - 개별 퀴즈 페이지: 해당 퀴즈의 구조를 분석
+ * - 분석 결과를 바탕으로 새 설문 생성에 필요한 데이터 반환
  */
 export async function scrapeSurvey(url: string): Promise<ScrapedData> {
   console.log(`[스크래퍼] 스크래핑 시작: ${url}`);
 
-  // URL 분석
-  const { domain, category: urlCategory } = analyzeUrl(url);
-  console.log(`[스크래퍼] 도메인: ${domain}, URL 카테고리: ${urlCategory}`);
+  let browser: Browser;
+  let page: Page;
 
-  // MVP: 스크래핑 시뮬레이션 (2초 딜레이)
-  console.log("[스크래퍼] MVP 모드: 모의 스크래핑 실행 중...");
-  await new Promise((resolve) => setTimeout(resolve, 2000));
+  try {
+    browser = await getBrowser();
+    page = await browser.newPage();
+    await page.setViewportSize({ width: 1280, height: 800 });
+  } catch (error) {
+    console.error("[스크래퍼] 브라우저 시작 실패, 폴백 모드:", error);
+    return fallbackScrape(url);
+  }
 
-  // URL 기반 카테고리 감지
-  const category = detectCategory(url);
-  console.log(`[스크래퍼] 감지된 카테고리: ${category}`);
+  try {
+    // 대상 URL 접속
+    await page.goto(url, { waitUntil: "domcontentloaded", timeout: 20000 });
+    await page.waitForTimeout(2000);
 
-  // 카테고리에 맞는 템플릿으로 모의 데이터 생성
-  const templateFn = MOCK_TEMPLATES[category] || MOCK_TEMPLATES["기본"];
-  const data = templateFn();
+    // 리스트 페이지인지 판별
+    const isList = await isListPage(page);
+    console.log(`[스크래퍼] 페이지 타입: ${isList ? "리스트" : "개별 퀴즈"}`);
 
-  console.log(`[스크래퍼] 스크래핑 완료: ${data.steps.length}개 질문, ${data.results.length}개 결과 추출`);
+    if (isList) {
+      // 리스트 페이지: 퀴즈 링크 추출 후 각각 분석
+      const quizLinks = await extractQuizLinks(page);
+      console.log(`[스크래퍼] 발견된 퀴즈 링크: ${quizLinks.length}개`);
 
-  return data;
+      const analyzedData: ScrapedData[] = [];
+      // 최대 5개만 분석
+      for (const link of quizLinks.slice(0, 5)) {
+        const data = await scrapeQuizPage(page, link.url);
+        if (data) {
+          analyzedData.push(data);
+        }
+      }
+
+      if (analyzedData.length === 0) {
+        console.log("[스크래퍼] 퀴즈 분석 결과 없음, 리스트 제목으로 폴백");
+        return fallbackScrape(url);
+      }
+
+      // 여러 퀴즈 데이터를 종합하여 하나의 ScrapedData로 합침
+      const combined: ScrapedData = {
+        title: analyzedData[0].title,
+        description: `${quizLinks.length}개 퀴즈에서 영감을 받은 콘텐츠`,
+        sourceUrl: url,
+        steps: analyzedData.flatMap((d) => d.steps).slice(0, 15),
+        results: analyzedData.flatMap((d) => d.results).slice(0, 8),
+        metadata: {
+          targetAudience: "SNS 활발 사용자",
+          viralPoints: [
+            `${quizLinks.length}개 퀴즈에서 트렌드 분석`,
+            ...analyzedData[0].metadata.viralPoints,
+          ],
+          improvements: analyzedData[0].metadata.improvements,
+          scrapedQuizCount: quizLinks.length,
+          analyzedUrls: analyzedData.map((d) => d.sourceUrl),
+        },
+      };
+
+      return combined;
+    } else {
+      // 개별 퀴즈 페이지
+      const data = await scrapeQuizPage(page, url);
+      if (data) return data;
+      return fallbackScrape(url);
+    }
+  } catch (error) {
+    console.error("[스크래퍼] 스크래핑 실패:", error);
+    return fallbackScrape(url);
+  } finally {
+    await page.close().catch(() => {});
+  }
+}
+
+/**
+ * 폴백: 스크래핑 실패 시 URL 기반 더미 데이터 반환
+ */
+function fallbackScrape(url: string): ScrapedData {
+  console.log("[스크래퍼] 폴백 모드: URL 기반 더미 데이터 생성");
+
+  const urlLower = url.toLowerCase();
+  let category = "심리";
+  if (urlLower.includes("연애") || urlLower.includes("love") || urlLower.includes("couple")) category = "연애";
+  if (urlLower.includes("성격") || urlLower.includes("mbti") || urlLower.includes("personality")) category = "성격";
+  if (urlLower.includes("음식") || urlLower.includes("food")) category = "음식";
+
+  return {
+    title: `${category} 테스트 분석 결과`,
+    description: `${url}에서 영감을 받은 ${category} 테스트`,
+    sourceUrl: url,
+    steps: [
+      { question: `${category}에 관한 첫 번째 질문?`, options: ["선택 A", "선택 B", "선택 C"] },
+      { question: `당신의 ${category} 스타일은?`, options: ["적극적", "신중한", "자유로운"] },
+      { question: `${category}에서 가장 중요한 것은?`, options: ["재미", "의미", "공감", "도전"] },
+      { question: "주변 사람들이 보는 나는?", options: ["열정적", "차분한", "유쾌한", "진지한"] },
+      { question: "스트레스를 받을 때 나는?", options: ["혼자 있기", "친구 만나기", "운동하기", "먹기"] },
+    ],
+    results: [
+      { title: "열정 충만형", description: "에너지가 넘치는 당신!" },
+      { title: "감성 충만형", description: "감수성이 풍부한 당신!" },
+      { title: "이성 충만형", description: "논리적이고 차분한 당신!" },
+    ],
+    metadata: {
+      targetAudience: "10대~30대 SNS 활발 사용자",
+      viralPoints: ["공감되는 질문", "공유하고 싶은 결과", "짧은 소요 시간"],
+      improvements: ["실제 페이지 분석으로 더 정확한 데이터 필요"],
+    },
+  };
 }
