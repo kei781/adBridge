@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import Image from 'next/image';
+
 import { useAd } from './AdProvider';
 
 interface VignetteAdProps {
@@ -86,7 +86,8 @@ export default function VignetteAd({ show, onClose }: VignetteAdProps) {
           onClick={() => handleClick(ad.id)}
           className="block w-full cursor-pointer overflow-hidden rounded-xl"
         >
-          <Image
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
             src={ad.imageUrl}
             alt="광고"
             width={ad.imageWidth}

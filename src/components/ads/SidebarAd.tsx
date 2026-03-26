@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
-import Image from 'next/image';
+
 import { useAd } from './AdProvider';
 
 /**
@@ -37,7 +37,8 @@ export default function SidebarAd() {
           onClick={() => handleClick(ad.id)}
           className="block cursor-pointer overflow-hidden rounded-lg shadow-lg hover:shadow-xl transition-shadow duration-200"
         >
-          <Image
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
             src={ad.imageUrl}
             alt="광고"
             width={ad.imageWidth}

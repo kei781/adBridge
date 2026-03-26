@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import Image from 'next/image';
+
 import { useAd } from './AdProvider';
 
 /**
@@ -50,7 +50,8 @@ export default function AnchorAd() {
         >
           {/* 모바일 배너 (320x100) */}
           <div className="block md:hidden">
-            <Image
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
               src={ad.imageUrl}
               alt="광고"
               width={320}
@@ -60,7 +61,8 @@ export default function AnchorAd() {
           </div>
           {/* 데스크톱 배너 (728x90) */}
           <div className="hidden md:block">
-            <Image
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
               src={ad.imageUrl}
               alt="광고"
               width={728}

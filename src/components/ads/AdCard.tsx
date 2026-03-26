@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
-import Image from 'next/image';
+
 import { useAd } from './AdProvider';
 
 /**
@@ -31,7 +31,8 @@ export default function AdCard() {
     >
       {/* 이미지 영역 — SurveyCard와 동일한 비율 */}
       <div className="relative aspect-[3/4] w-full overflow-hidden">
-        <Image
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
           src={ad.imageUrl}
           alt="광고"
           width={480}
