@@ -190,7 +190,7 @@ export default function AdminGeneratorJobPage() {
       const json = await res.json();
 
       if (res.ok) {
-        setApproveMessage(`${json.data.approvedCount}개 설문이 승인되었습니다.`);
+        setApproveMessage(`${json.data.processedCount}개 설문이 승인되었습니다.`);
         setSelectedIds(new Set());
         // 승인된 설문 상태 업데이트
         setSurveys((prev) =>
