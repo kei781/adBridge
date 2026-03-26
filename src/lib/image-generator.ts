@@ -133,13 +133,13 @@ export async function generateThumbnail(slug: string, title: string, description
   if (imageBuffer) {
     const filePath = path.join(dir, `${hash}.png`);
     await writeFile(filePath, imageBuffer);
-    return `/generated/thumbnails/${hash}.png`;
+    return `/api/images/thumbnails/${hash}.png`;
   }
 
   // SVG 폴백
   const filePath = path.join(dir, `${hash}.svg`);
   await writeFile(filePath, makeSvg(480, 640, title, description, slug), "utf-8");
-  return `/generated/thumbnails/${hash}.svg`;
+  return `/api/images/thumbnails/${hash}.svg`;
 }
 
 /**
@@ -170,13 +170,13 @@ export async function generateResultImage(
   if (imageBuffer) {
     const filePath = path.join(dir, `${hash}.png`);
     await writeFile(filePath, imageBuffer);
-    return `/generated/results/${hash}.png`;
+    return `/api/images/results/${hash}.png`;
   }
 
   // SVG 폴백
   const filePath = path.join(dir, `${hash}.svg`);
   await writeFile(filePath, makeSvg(1200, 630, resultTitle, surveyTitle, `${slug}-${resultKey}`), "utf-8");
-  return `/generated/results/${hash}.svg`;
+  return `/api/images/results/${hash}.svg`;
 }
 
 /**
